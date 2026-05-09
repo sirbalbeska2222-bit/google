@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Разделитель видео на кадры</title>
+    <!-- Подключаем Tailwind CSS для стилей -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Подключаем JSZip для создания архивов -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- Подключаем FileSaver для сохранения файлов -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- Подключаем иконки -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        
+        .drop-zone { transition: all 0.2s ease; }
+        .drop-zone.dragover { background-color: #eff6ff; border-color: #3b82f6; }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #3b82f6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen font-sans">
+
+    <div class="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        
+        <!-- Заголовок -->
+        <header class="text-center space-y-2">
+            <h1 class="text-3xl font-bold tracking-tight text-slate-900 flex items-center justify-center gap-3">
+                <i data-lucide="film" class="w-8 h-8 text-blue-600"></i>
+                Разделитель видео на кадры
+            </h1>
+            <p class="text-slate-500">Извлекайте отдельные изображения из видеофайлов с любой точностью</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Левая колонка: Управление -->
+            <div class="lg:col-span-1 space-y-6">
+                
+                <!-- Загрузка файла -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                    <h2 class="text-lg font-semibold mb-4 flex items-center gap-2 text-slate-900">
+                        <i data-lucide="upload" class="w-5 h-5 text-slate-400"></i>
+                        Шаг 1: Загрузка
+                    </h2>
+                    
+                    <div id="dropZone" class="drop-zone border-2 border-dashed border-slate-300 rounded-xl p-6 text-center cursor-pointer hover:bg-slate-50">
+                        <input type="file" id="videoInput" accept="video/*" class="hidden" />
+                        <div class="flex flex-col items-center gap-2 pointer-events-none">
+                            <i data-lucide="file-video" class="w-10 h-10 text-slate-400"></i>
+                            <span class="text-sm font-medium text-slate-600" id="fileNameDisplay">Нажмите или перетащите видео</span>
+                            <span class="text-xs text-slate-400 italic">Локальная обработка</span>
+                        </div>
+                    </div>
+
+                    <div id="videoInfo" class="hidden mt-4 bg-slate-50 rounded-lg p-3 text-sm">
+                        <div class="flex justify-between border-b border-slate-200 pb-1 mb-1">
+                            <span class="text-slate-500">Длительность:</span>
+                            <span id="videoDuration" class="font-medium">0 сек</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-500">Разрешение:</span>
+                            <span id="videoResolution" class="font-medium">0x0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Настройки процесса -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                    <h2 class="text-lg font-semibold mb-4 flex items-center gap-2 text-slate-900">
+                        <i data-lucide="settings-2" class="w-5 h-5 text-slate-400"></i>
+                        Шаг 2: Настройки
+                    </h2>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Режим извлечения</label>
+                            <div class="flex gap-4">
+                                <label class="inline-flex items-center cursor-pointer">
+                                    <input type="radio" name="extractMode" value="interval" checked class="text-blue-600 focus:ring-blue-500 w-4 h-4">
+                                    <span class="ml-2 text-sm text-slate-700">Интервал</span>
+                                </label>
+                                <label class="inline-flex items-center cursor-pointer">
+                                    <input type="radio" name="extractMode" value="count" class="text-blue-600 focus:ring-blue-500 w-4 h-4">
+                                    <span class="ml-2 text-sm text-slate-700">Кол-во кадров</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div id="intervalContainer">
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Интервал (сек)</label>
+                            <input type="number" id="intervalInput" min="0.0001" step="0.0001" value="1" 
+                                class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-shadow">
+                        </div>
+
+                        <div id="countContainer" class="hidden">
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Всего кадров</label>
+                            <input type="number" id="frameCountInput" min="1" step="1" value="30" 
+                                class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-shadow">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Формат вывода</label>
+                            <select id="formatSelect" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                                <option value="image/jpeg">JPEG (Сжатие)</option>
+                                <option value="image/png">PNG (Без потерь)</option>
+                            </select>
+                        </div>
+
+                        <div id="qualitySettings">
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Качество JPEG: <span id="qualityValue">80%</span></label>
+                            <input type="range" id="qualityInput" min="0.1" max="1" step="0.1" value="0.8" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Кнопки управления -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                    <button id="startBtn" disabled class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all">
+                        <i data-lucide="aperture" class="w-5 h-5"></i> Начать
+                    </button>
+                    <button id="stopBtn" class="hidden w-full bg-red-100 text-red-600 hover:bg-red-200 font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all mt-2">
+                        <i data-lucide="square" class="w-5 h-5"></i> Остановить
+                    </button>
+
+                    <div id="statusArea" class="hidden mt-4 space-y-3">
+                        <div class="flex justify-between text-sm">
+                            <span id="statusText" class="text-slate-500">Обработка...</span>
+                            <span id="progressPercentage" class="font-bold text-blue-600">0%</span>
+                        </div>
+                        <div class="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                            <div id="progressBar" class="bg-blue-600 h-full transition-all duration-200" style="width: 0%"></div>
+                        </div>
+                        <div class="text-xs text-center text-slate-400 uppercase tracking-wider">
+                            Кадров: <span id="frameCount" class="font-bold text-slate-800">0</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Правая колонка: Галерея -->
+            <div class="lg:col-span-2 flex flex-col min-h-[600px]">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex-1 flex flex-col">
+                    <div class="flex justify-between items-center mb-6 pb-4 border-b">
+                        <h2 class="text-lg font-bold flex items-center gap-2 text-slate-900 uppercase tracking-tight">
+                            <i data-lucide="gallery-vertical" class="w-5 h-5 text-blue-500"></i> Результат
+                        </h2>
+                        <button id="downloadZipBtn" disabled class="bg-slate-900 hover:opacity-90 disabled:bg-slate-100 disabled:text-slate-400 text-white text-sm font-bold py-2 px-6 rounded-lg flex items-center gap-2 transition-all">
+                            <i data-lucide="download" class="w-4 h-4"></i> Скачать ZIP
+                        </button>
+                    </div>
+                    
+                    <div id="gallery" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 overflow-y-auto max-h-[750px] pr-2">
+                        <div id="galleryPlaceholder" class="col-span-full flex flex-col items-center justify-center text-slate-400 py-32 gap-4">
+                            <div class="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center">
+                                <i data-lucide="image" class="w-8 h-8 opacity-20"></i>
+                            </div>
+                            <p class="text-sm font-medium opacity-50">Ожидание видео...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <video id="hiddenVideo" class="hidden" muted playsinline></video>
+    <canvas id="hiddenCanvas" class="hidden"></canvas>
+
+    <script>
+        lucide.createIcons();
+
+        // Элементы
+        const dropZone = document.getElementById('dropZone');
+        const videoInput = document.getElementById('videoInput');
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+        const videoInfo = document.getElementById('videoInfo');
+        const intervalInput = document.getElementById('intervalInput');
+        const frameCountInput = document.getElementById('frameCountInput');
+        const formatSelect = document.getElementById('formatSelect');
+        const qualityInput = document.getElementById('qualityInput');
+        const qualitySettings = document.getElementById('qualitySettings');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const downloadZipBtn = document.getElementById('downloadZipBtn');
+        const gallery = document.getElementById('gallery');
+        const galleryPlaceholder = document.getElementById('galleryPlaceholder');
+        const hiddenVideo = document.getElementById('hiddenVideo');
+        const hiddenCanvas = document.getElementById('hiddenCanvas');
+        const ctx = hiddenCanvas.getContext('2d');
+
+        let currentFile = null;
+        let isExtracting = false;
+        let extractedFrames = [];
+
+        // Логика форматов
+        formatSelect.addEventListener('change', (e) => {
+            if (e.target.value === 'image/png') {
+                qualitySettings.classList.add('opacity-30', 'pointer-events-none');
+            } else {
+                qualitySettings.classList.remove('opacity-30', 'pointer-events-none');
+            }
+        });
+
+        document.querySelectorAll('input[name="extractMode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                document.getElementById('intervalContainer').classList.toggle('hidden', e.target.value !== 'interval');
+                document.getElementById('countContainer').classList.toggle('hidden', e.target.value !== 'count');
+            });
+        });
+
+        qualityInput.addEventListener('input', (e) => {
+            document.getElementById('qualityValue').textContent = `${Math.round(e.target.value * 100)}%`;
+        });
+
+        dropZone.onclick = () => videoInput.click();
+        videoInput.onchange = (e) => e.target.files[0] && handleFile(e.target.files[0]);
+
+        function handleFile(file) {
+            if (!file.type.startsWith('video/')) return alert('Пожалуйста, выберите видеофайл');
+            currentFile = file;
+            fileNameDisplay.textContent = file.name;
+            hiddenVideo.src = URL.createObjectURL(file);
+            
+            hiddenVideo.onloadedmetadata = () => {
+                document.getElementById('videoDuration').textContent = `${hiddenVideo.duration.toFixed(2)} сек`;
+                document.getElementById('videoResolution').textContent = `${hiddenVideo.videoWidth}x${hiddenVideo.videoHeight}`;
+                videoInfo.classList.remove('hidden');
+                startBtn.disabled = false;
+                if (galleryPlaceholder) galleryPlaceholder.classList.add('hidden');
+            };
+        }
+
+        async function startExtraction() {
+            if (!currentFile) return;
+
+            const mode = document.querySelector('input[name="extractMode"]:checked').value;
+            const duration = hiddenVideo.duration;
+            const format = formatSelect.value;
+            const quality = parseFloat(qualityInput.value);
+            
+            let interval, targetCount;
+
+            if (mode === 'interval') {
+                interval = parseFloat(intervalInput.value);
+                targetCount = Math.floor(duration / interval);
+            } else {
+                targetCount = parseInt(frameCountInput.value);
+                interval = duration / (targetCount > 1 ? targetCount - 1 : 1);
+            }
+
+            extractedFrames.forEach(f => URL.revokeObjectURL(f.url));
+            extractedFrames = [];
+            gallery.innerHTML = '';
+            isExtracting = true;
+            
+            startBtn.classList.add('hidden');
+            stopBtn.classList.remove('hidden');
+            document.getElementById('statusArea').classList.remove('hidden');
+            downloadZipBtn.disabled = true;
+
+            hiddenCanvas.width = hiddenVideo.videoWidth;
+            hiddenCanvas.height = hiddenVideo.videoHeight;
+
+            for (let i = 0; i < targetCount && isExtracting; i++) {
+                const time = Math.min(i * interval, duration);
+                hiddenVideo.currentTime = time;
+                
+                await new Promise(r => {
+                    const onSeeked = () => {
+                        hiddenVideo.removeEventListener('seeked', onSeeked);
+                        r();
+                    };
+                    hiddenVideo.addEventListener('seeked', onSeeked);
+                    setTimeout(onSeeked, 1500); 
+                });
+                
+                ctx.drawImage(hiddenVideo, 0, 0);
+                const blob = await new Promise(r => hiddenCanvas.toBlob(r, format, format === 'image/png' ? undefined : quality));
+                const url = URL.createObjectURL(blob);
+                
+                extractedFrames.push({ blob, url, time });
+                
+                if (extractedFrames.length <= 400) {
+                    addFrame(url, time.toFixed(3));
+                }
+                
+                const prog = Math.round(((i + 1) / targetCount) * 100);
+                document.getElementById('progressBar').style.width = prog + '%';
+                document.getElementById('progressPercentage').textContent = prog + '%';
+                document.getElementById('frameCount').textContent = extractedFrames.length;
+                
+                await new Promise(r => requestAnimationFrame(r));
+            }
+
+            isExtracting = false;
+            startBtn.classList.remove('hidden');
+            stopBtn.classList.add('hidden');
+            downloadZipBtn.disabled = extractedFrames.length === 0;
+        }
+
+        function addFrame(url, time) {
+            const div = document.createElement('div');
+            div.className = 'group relative aspect-video rounded-xl overflow-hidden bg-slate-100 border-2 border-transparent hover:border-blue-500 transition-all shadow-sm';
+            div.innerHTML = `
+                <img src="${url}" class="w-full h-full object-cover">
+                <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                    <span class="text-[10px] font-bold text-white/90">${time}s</span>
+                </div>
+            `;
+            gallery.appendChild(div);
+        }
+
+        downloadZipBtn.onclick = async () => {
+            downloadZipBtn.disabled = true;
+            const originalText = downloadZipBtn.innerHTML;
+            downloadZipBtn.innerHTML = `Сборка...`;
+
+            const zip = new JSZip();
+            const ext = formatSelect.value === 'image/png' ? 'png' : 'jpg';
+            
+            extractedFrames.forEach((f, i) => {
+                const name = `frame_${String(i+1).padStart(5,'0')}_${f.time.toFixed(3)}s.${ext}`;
+                zip.file(name, f.blob);
+            });
+
+            const content = await zip.generateAsync({type:"blob"});
+            saveAs(content, `video_frames_${Date.now()}.zip`);
+            
+            downloadZipBtn.disabled = false;
+            downloadZipBtn.innerHTML = originalText;
+        };
+
+        startBtn.onclick = startExtraction;
+        stopBtn.onclick = () => isExtracting = false;
+    </script>
+</body>
+</html>
